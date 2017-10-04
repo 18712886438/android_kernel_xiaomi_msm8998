@@ -106,9 +106,8 @@ dtb-$(CONFIG_ARCH_MSM8998) += msm8998-mtp.dtb \
 	msm8998-v2-mtp.dtb \
 	msm8998-v2.1-mtp.dtb \
 	msm8998-v2.1-mtp-4k-display.dtb \
-	sagit-msm8998-mtp.dtb \
-	sagit-msm8998-v2-mtp.dtb \
-	sagit-msm8998-v2.1-mtp.dtb
+	msm8998-v2-mtp.dtb \
+	msm8998-v2.1-mtp.dtb
 
 dtb-$(CONFIG_ARCH_MSMHAMSTER) += msmhamster-rumi.dtb
 
