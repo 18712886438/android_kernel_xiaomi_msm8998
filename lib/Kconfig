@@ -550,5 +550,10 @@ config QMI_ENCDEC_DEBUG
 config STACKDEPOT
 	bool
 	select STACKTRACE
+	
+config CJSON
+	bool "Lightweight JSON in ANSI C"
+	help
+	  Kernel config option to enable cJSON library.
 
 endmenu
