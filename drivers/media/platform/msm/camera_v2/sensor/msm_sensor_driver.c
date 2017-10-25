@@ -1,4 +1,5 @@
-/* Copyright (c) 2013-2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2017 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -702,6 +703,12 @@ static int32_t msm_sensor_driver_is_special_support(
 	return rc;
 }
 
+/* compatible eeprom map for sagit P3 & P2 */
+extern int get_back_sensor_module_invalid(void);
+
+extern void get_eeprom_name(uint8_t index, char *name);
+extern uint8_t eeprom_name_count;
+
 /* static function definition */
 int32_t msm_sensor_driver_probe(void *setting,
 	struct msm_sensor_info_t *probed_info, char *entity_name)
@@ -711,9 +718,10 @@ int32_t msm_sensor_driver_probe(void *setting,
 	struct msm_camera_cci_client        *cci_client = NULL;
 	struct msm_camera_sensor_slave_info *slave_info = NULL;
 	struct msm_camera_slave_info        *camera_info = NULL;
-
 	unsigned long                        mount_pos = 0;
 	uint32_t                             is_yuv;
+	uint8_t i = 0;
+	char eeprom_name[64];
 
 	/* Validate input parameters */
 	if (!setting) {
@@ -795,19 +803,20 @@ int32_t msm_sensor_driver_probe(void *setting,
 		}
 	}
 
-	if (strlen(slave_info->sensor_name) >= MAX_SENSOR_NAME ||
-		strlen(slave_info->eeprom_name) >= MAX_SENSOR_NAME ||
-		strlen(slave_info->actuator_name) >= MAX_SENSOR_NAME ||
-		strlen(slave_info->ois_name) >= MAX_SENSOR_NAME) {
-		pr_err("failed: name len greater than 32.\n");
-		pr_err("sensor name len:%zu, eeprom name len: %zu.\n",
-			strlen(slave_info->sensor_name),
-			strlen(slave_info->eeprom_name));
-		pr_err("actuator name len: %zu, ois name len:%zu.\n",
-			strlen(slave_info->actuator_name),
-			strlen(slave_info->ois_name));
-		rc = -EINVAL;
-		goto free_slave_info;
+	if (strcmp(slave_info->eeprom_name, "") != 0) {
+		for (i = 0; i < eeprom_name_count; i++) {
+			get_eeprom_name(i, eeprom_name);
+			if (strcmp(slave_info->eeprom_name, eeprom_name) != 0) {
+				CDBG("%s: sensor_eeprom_name %d = %s, sensor_name = %s! can't probe!\n", __func__,
+							i, eeprom_name, slave_info->eeprom_name);
+				if ((eeprom_name_count - 1) == i) {
+					goto free_slave_info;
+				}
+			} else {
+				CDBG("%s: sensor_eeprom_name %d = %s\n", __func__, i, eeprom_name);
+				break;
+			}
+		}
 	}
 
 	/* Print slave info */
@@ -846,6 +855,16 @@ int32_t msm_sensor_driver_probe(void *setting,
 
 	CDBG("s_ctrl[%d] %pK", slave_info->camera_id, s_ctrl);
 
+	/* compatible eeprom map for sagit P3 & P2 */
+	if (slave_info->camera_id == 1) {
+		rc = get_back_sensor_module_invalid();
+		pr_err("rc = %d invalid back module \n", rc);
+
+		if (rc == 0) {
+			goto  free_camera_info;
+		}
+	}
+
 	if (s_ctrl->sensordata->special_support_size > 0) {
 		if (!msm_sensor_driver_is_special_support(s_ctrl,
 			slave_info->sensor_name)) {
@@ -864,12 +883,9 @@ int32_t msm_sensor_driver_probe(void *setting,
 		 */
 		if (slave_info->sensor_id_info.sensor_id ==
 			s_ctrl->sensordata->cam_slave_info->
-				sensor_id_info.sensor_id &&
-			!(strcmp(slave_info->sensor_name,
-			s_ctrl->sensordata->cam_slave_info->sensor_name))) {
-			pr_err("slot%d: sensor name: %s sensor id%d already probed\n",
+				sensor_id_info.sensor_id) {
+			pr_err("slot%d: sensor id%d already probed\n",
 				slave_info->camera_id,
-				slave_info->sensor_name,
 				s_ctrl->sensordata->cam_slave_info->
 					sensor_id_info.sensor_id);
 			msm_sensor_fill_sensor_info(s_ctrl,
@@ -1066,12 +1082,16 @@ free_slave_info:
 	return rc;
 }
 
+bool SENSOR_SUPPORT_OIS_FLAG;
+EXPORT_SYMBOL(SENSOR_SUPPORT_OIS_FLAG);
+
 static int32_t msm_sensor_driver_get_dt_data(struct msm_sensor_ctrl_t *s_ctrl)
 {
 	int32_t                              rc = 0, i = 0;
 	struct msm_camera_sensor_board_info *sensordata = NULL;
 	struct device_node                  *of_node = s_ctrl->of_node;
 	uint32_t	cell_id;
+	struct device_node *ois_src_node = NULL;
 
 	s_ctrl->sensordata = kzalloc(sizeof(*sensordata), GFP_KERNEL);
 	if (!s_ctrl->sensordata) {
@@ -1104,6 +1124,17 @@ static int32_t msm_sensor_driver_get_dt_data(struct msm_sensor_ctrl_t *s_ctrl)
 		pr_err("failed: sctrl already filled for cell_id %d", cell_id);
 		rc = -EINVAL;
 		goto FREE_SENSOR_DATA;
+	}
+
+	/* check whether support ois*/
+	ois_src_node = of_parse_phandle(of_node, "qcom,ois-src", 0);
+	if (!ois_src_node) {
+		pr_err("failes: no ois node, maybe didn't support ois\n");
+		SENSOR_SUPPORT_OIS_FLAG = false;
+	} else {
+		SENSOR_SUPPORT_OIS_FLAG = true;
+		of_node_put(ois_src_node);
+		ois_src_node = NULL;
 	}
 
 	sensordata->special_support_size =
